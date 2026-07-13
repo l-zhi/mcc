@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
-## [Unreleased]
+## [0.1.0] - 2026-07-13
 
 ### Added
 - 权限 allowlist：确认对话新增「总是允许」，规则持久化到 `~/.mcc/settings.json`（`permissions.allow`），`/permissions` 查看
