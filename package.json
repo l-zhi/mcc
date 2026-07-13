@@ -7,6 +7,7 @@
     "mcc": "./src/cli.ts"
   },
   "author": "alan <alan@opensci.io>",
+  "license": "MIT",
   "keywords": [
     "coding-agent",
     "cli",
