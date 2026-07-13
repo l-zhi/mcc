@@ -1,0 +1,7 @@
+{
+  "apiKey": "sk-...",
+  "baseURL": "https://api.openai.com/v1",
+  "model": "gpt-4o",
+  "contextWindow": 128000,
+  "maxTokens": 16384
+}

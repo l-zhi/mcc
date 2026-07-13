@@ -1,0 +1,42 @@
+{
+  "name": "mcc",
+  "version": "0.1.0",
+  "description": "A minimal coding CLI agent, built step by step for learning",
+  "type": "module",
+  "bin": {
+    "mcc": "./src/cli.ts"
+  },
+  "author": "alan <alan@opensci.io>",
+  "keywords": [
+    "coding-agent",
+    "cli",
+    "agent",
+    "coding-agent",
+    "llm",
+    "learning"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx tests/run-all.ts",
+    "test:bash": "tsx tests/test-bash.ts"
+  },
+  "dependencies": {
+    "@vscode/ripgrep": "^1.18.0",
+    "tsx": "^4.19.0",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.18.2",
+    "vscode-languageserver-types": "^3.18.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0"
+  }
+}

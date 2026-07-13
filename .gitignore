@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+
+# 系统 / 编辑器
+.DS_Store
+
+# 构建 / 派生
+dist/
+*.tsbuildinfo
+
+# 临时文件
+*.tmp
+*.tmp2
+*.log
+
+# 示例 / 实验产物（本地保留，不上传）
+examples/
+demo/
+
+# 本地配置（apiKey 只放 ~/.mcc/config.json，永不进仓库）
+config.json
+
+# 内部流程文档（本地保留，不发布）
+docs/design/PRE-RELEASE-CHECKLIST.md
+docs/design/SCRUB-PLAN.md
