@@ -78,6 +78,10 @@ npm start        # 或 npx tsx src/cli.ts
 
 ## 链路 trace
 
+![mcc 链路 trace viewer](assets/mcc-logs.png)
+
+*一次「坦克大战」生成的完整链路：12 次 LLM 调用、Bash / TodoWrite / Write 工具的交错、每步的 thinking、耗时横条与 token。*
+
 默认开启（`MCC_TRACE=0` / `MCC_TRACE=false` 关闭）。每轮对话会记录到
 `~/.mcc/traces/`：
 

@@ -38,6 +38,15 @@ Suggested reading order: `cli.ts → repl.ts → query.ts → Tool.ts → tools/
 > each pointing at the reference location it stands in for. "Not implemented" messages are
 > by design, not bugs.
 
+## Trace viewer
+
+![mcc trace viewer](assets/mcc-logs.png)
+
+Every turn is recorded to `~/.mcc/traces/` as a self-contained HTML viewer — the
+screenshot above shows one "tank battle" build: 12 LLM calls, interleaved
+Bash / TodoWrite / Write tool calls, per-step thinking, timing bars and tokens.
+See the Chinese [README.md](./README.md) for details.
+
 ## Requirements
 
 - Node.js 22+
