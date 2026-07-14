@@ -2,6 +2,11 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [Unreleased]
+
+### Added
+- `-d` / `--dir <path>` 启动参数：在指定代码库里启动（不传则用当前目录）。启动时 `process.chdir` 到目标目录，系统提示词/记忆/工具/trace 全部随之生效
+
 ## [0.1.0] - 2026-07-13
 
 ### Added

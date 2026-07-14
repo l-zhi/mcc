@@ -64,8 +64,14 @@ OpenAI-compatible endpoint (DeepSeek / Qwen / Kimi, etc.).
 
 ```bash
 npm install
-npm start          # or: npx tsx src/cli.ts
+npm start                       # start in the current directory
+npm start -- -d ./some/project  # start in a given repo (npm needs the --)
+npx tsx src/cli.ts -d ./some/project
 ```
+
+`-d` / `--dir` sets the working directory (defaults to the current one) — the system
+prompt, project memory (`<dir>/CLAUDE.md`), the Grep/Glob/Read/Write/Bash tools and the
+trace all operate relative to it. Once installed as a command: `mcc -d ./some/project`.
 
 Type `exit` / `quit` or Ctrl+C to quit.
 

@@ -65,8 +65,13 @@ LSP（真实语言服务器：spawn + JSON-RPC，定义/引用/悬停/符号/调
 
 ```bash
 npm install
-npm start        # 或 npx tsx src/cli.ts
+npm start                       # 在当前目录启动
+npm start -- -d ./some/project  # 在指定代码库里启动（注意 npm 需要 --）
+npx tsx src/cli.ts -d ./some/project
 ```
+
+`-d` / `--dir` 指定工作目录（不传则用当前目录）——系统提示词、项目记忆（`<dir>/CLAUDE.md`）、
+Grep/Glob/Read/Write/Bash 等工具、trace 都以该目录为准。装成命令后可直接 `mcc -d ./some/project`。
 
 ```
 > 读一下 src/cli.ts 是干什么的
