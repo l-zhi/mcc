@@ -3,6 +3,8 @@
 // 去掉了参考实现中的 UI 渲染、权限、并发安全等挂点（见 stubs.ts 的日志桩）。
 import { z } from 'zod'
 import type { ChatMessage, ToolSpec } from './api.js'
+import type { Config } from './config.js'
+import type { ConfirmFn } from './query.js'
 
 export type ToolResult = {
   /** 作为 role:"tool" 消息回填给模型的文本内容 */
@@ -18,6 +20,12 @@ export type ToolResult = {
 export type ToolContext = {
   /** 当前轮的中断信号：长耗时工具（如 Bash）应透传/监听它，Ctrl+C 时及时停止 */
   signal?: AbortSignal
+  /** 配置（子代理工具需要它起子 query）；由主循环透传 */
+  config?: Config
+  /** 权限确认回调；子代理把它传给子 query，让子代理的变更工具照常请求确认 */
+  confirm?: ConfirmFn
+  /** 递归深度：主循环 0，子代理 1；用于并发/递归护栏 */
+  depth?: number
 }
 
 export type ToolDef<S extends z.ZodType = z.ZodType> = {

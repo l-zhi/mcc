@@ -17,6 +17,7 @@ import { GlobTool } from './tools/GlobTool/GlobTool.js'
 import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
+import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { TodoWriteTool, renderPlain } from './tools/TodoWriteTool/TodoWriteTool.js'
 import { TODO_WRITE_TOOL_NAME } from './tools/TodoWriteTool/prompt.js'
 import {
@@ -80,6 +81,10 @@ export type QueryOptions = {
   signal?: AbortSignal
   /** 非只读工具的确认回调；不提供则一律放行（如管道/非交互模式） */
   confirm?: ConfirmFn
+  /** 本轮循环使用的工具集；不传则用全量 allTools。子代理用它跑受限工具集。 */
+  tools?: Tool[]
+  /** 递归深度：主循环 0，子代理 1。用于并发/递归护栏。 */
+  depth?: number
 }
 
 /** 为确认对话生成一行简短的输入摘要 */
@@ -103,6 +108,7 @@ export const allTools: Tool[] = [
   LSPTool,
   BashTool,
   TodoWriteTool,
+  AgentTool,
 ]
 
 const DIM = '\x1b[2m'
@@ -158,9 +164,11 @@ function printToolUse(toolCall: ToolCall): void {
 
 async function runToolCall(
   toolCall: ToolCall,
+  tools: Tool[],
+  config: Config,
   opts: QueryOptions,
 ): Promise<{ content: string; newMessages: ChatMessage[]; isError: boolean }> {
-  const tool = allTools.find(t => t.name === toolCall.function.name)
+  const tool = tools.find(t => t.name === toolCall.function.name)
   if (!tool) {
     return {
       content: `Error: unknown tool "${toolCall.function.name}"`,
@@ -217,7 +225,12 @@ async function runToolCall(
   }
 
   try {
-    const result = await tool.call(parsed.data, { signal: opts.signal })
+    const result = await tool.call(parsed.data, {
+      signal: opts.signal,
+      config,
+      confirm: opts.confirm,
+      depth: opts.depth ?? 0,
+    })
     return {
       content: result.content,
       newMessages: result.newMessages ?? [],
@@ -247,7 +260,11 @@ export async function query(
   opts: QueryOptions = {},
 ): Promise<'ok' | 'truncated' | 'interrupted'> {
   const { signal } = opts
-  const toolSpecs = allTools.map(toOpenAIToolSpec)
+  // 本轮工具集：子代理传受限集合，否则用全量 allTools
+  const tools = opts.tools ?? allTools
+  const toolSpecs = tools.map(toOpenAIToolSpec)
+  // 工具 schema 开销（计入上下文估算）。按本轮实际工具集算，子代理集合更小也准确。
+  const toolsOverhead = Math.ceil(JSON.stringify(toolSpecs).length / 4)
   // 本轮已执行的工具调用数：⑤ 提醒只在模型确实在动手时才触发，纯对话不打扰
   let toolCallsThisTurn = 0
 
@@ -261,8 +278,7 @@ export async function query(
 
     // 上下文管理：调模型前检查用量。compact（总结）优先于 microcompact（清旧工具结果）。
     // compact 自身是一次直调 chatCompletion（无工具），不走 query，不会递归触发。
-    // 估算要加上工具 schema 开销，否则会严重偏低（阈值偏晚）。
-    const toolsOverhead = getToolsOverheadTokens()
+    // 估算要加上工具 schema 开销（toolsOverhead，本轮工具集算一次），否则会严重偏低。
     const decision = decideCompaction(messages, config.contextWindow, toolsOverhead)
     if (decision === 'compact') {
       console.log(`${DIM}⚡ 上下文接近上限，正在压缩对话…${RESET}`)
@@ -400,7 +416,7 @@ export async function query(
       printToolUse(toolCall)
       toolCallsThisTurn++
       const toolStart = Date.now()
-      const { content, newMessages, isError } = await runToolCall(toolCall, opts)
+      const { content, newMessages, isError } = await runToolCall(toolCall, tools, config, opts)
       tracer.recordToolCall({
         id: toolCall.id,
         name: toolCall.function.name,

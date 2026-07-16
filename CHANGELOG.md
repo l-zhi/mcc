@@ -5,7 +5,11 @@
 ## [Unreleased]
 
 ### Added
+- **Agent 工具（多 Agent Phase 1）**：派发子代理，用全新上下文 + 受限工具集递归跑 `query()`，只回传最后一条 assistant 文本（上下文隔离）。护栏：子代理工具集排除 Agent（防递归）与 TodoWrite（避免覆盖共享待办）
 - `-d` / `--dir <path>` 启动参数：在指定代码库里启动（不传则用当前目录）。启动时 `process.chdir` 到目标目录，系统提示词/记忆/工具/trace 全部随之生效
+
+### Changed
+- `query()` 参数化：新增 `tools`（本轮工具集，默认全量）与 `depth`（递归深度）；`ToolContext` 透传 `config`/`confirm`/`depth`，为子代理起子循环提供地基
 
 ## [0.1.0] - 2026-07-13
 

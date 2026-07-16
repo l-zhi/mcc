@@ -67,8 +67,10 @@ export class Tracer {
   private current: TurnTrace | null = null
   private currentStep: StepTrace | null = null
 
-  constructor(config: Config) {
-    this.enabled = traceEnabled()
+  // opts.disabled：子代理用的静默 tracer——所有方法都会因 enabled=false 而 no-op，
+  // 且构造时不碰磁盘。子代理的可视化留到后续迭代（sidechain 嵌套）。
+  constructor(config: Config, opts?: { disabled?: boolean }) {
+    this.enabled = opts?.disabled ? false : traceEnabled()
     this.model = config.model
     if (!this.enabled) return
 
