@@ -31,6 +31,29 @@ import type { Tracer } from './trace/Tracer.js'
 /** 单个用户输入内的工具循环上限，防止模型陷入无限读文件循环 */
 const MAX_TOOL_ITERATIONS = 20
 
+/** 并发执行工具调用时的上限（Phase 3：多个子代理同批时限流，防 API 限流/失控） */
+const MAX_CONCURRENT_TOOLS = 5
+
+/** 限流并发：最多 limit 个同时在跑，结果按原下标返回。 */
+async function mapBounded<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i]!, i)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  )
+  return results
+}
+
 // ⑤ 周期性 TodoWrite 提醒：本轮已在动手（有过工具调用）、且距上次使用 TodoWrite
 // 已过这么多 LLM 步，就注入一条 <system-reminder> 把模型拉回逐步跟踪的节奏。
 // 对齐参考项目 TODO_REMINDER_CONFIG（参考按对话轮，mini 按主循环步，见 store.ts）。
@@ -158,8 +181,13 @@ function toTracedMessages(messages: ChatMessage[]): TracedMessage[] {
   })
 }
 
-function printToolUse(toolCall: ToolCall): void {
-  console.log(`${DIM}⏺ ${toolCall.function.name}(${toolCall.function.arguments})${RESET}`)
+// Phase 4：按递归深度缩进，子代理的活动在终端里明显嵌套在父之下（含并行子代理）。
+function indentOf(depth: number): string {
+  return '  '.repeat(depth)
+}
+
+function printToolUse(toolCall: ToolCall, depth = 0): void {
+  console.log(`${DIM}${indentOf(depth)}⏺ ${toolCall.function.name}(${toolCall.function.arguments})${RESET}`)
 }
 
 async function runToolCall(
@@ -260,6 +288,8 @@ export async function query(
   opts: QueryOptions = {},
 ): Promise<'ok' | 'truncated' | 'interrupted'> {
   const { signal } = opts
+  const depth = opts.depth ?? 0
+  const indent = indentOf(depth)
   // 本轮工具集：子代理传受限集合，否则用全量 allTools
   const tools = opts.tools ?? allTools
   const toolSpecs = tools.map(toOpenAIToolSpec)
@@ -371,7 +401,11 @@ export async function query(
     )
 
     if (response.content) {
-      console.log(response.content)
+      console.log(
+        depth > 0
+          ? response.content.split('\n').map(l => indent + l).join('\n')
+          : response.content,
+      )
     }
 
     // 撞到 max_tokens 被截断：输出不完整。
@@ -399,35 +433,69 @@ export async function query(
 
     // OpenAI 协议要求 assistant 消息之后紧跟每个 tool_call 的 role:"tool" 回复，
     // 其他消息（图片注入的 user 消息）必须排在所有 tool 消息之后。
+    const calls = response.tool_calls
     const injected: ChatMessage[] = []
     let interrupted = false
-    for (const toolCall of response.tool_calls) {
-      // 已中断：为剩余 tool_call 补占位结果，保证协议完整性
-      // （assistant.tool_calls 的每一项都必须有对应的 tool 消息，否则下轮请求会被拒）
-      if (interrupted || signal?.aborted) {
-        interrupted = true
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: '已被用户中断，未执行。',
-        })
-        continue
-      }
-      printToolUse(toolCall)
-      toolCallsThisTurn++
-      const toolStart = Date.now()
-      const { content, newMessages, isError } = await runToolCall(toolCall, tools, config, opts)
-      tracer.recordToolCall({
-        id: toolCall.id,
-        name: toolCall.function.name,
-        argumentsRaw: toolCall.function.arguments,
-        durationMs: Date.now() - toolStart,
-        resultContent: content,
-        isError,
+
+    // Phase 3 并发快路径：一条消息里的多个工具调用若「全部并发安全」（当前即多个 Agent 子代理），
+    // 限流并发执行；否则走下面的顺序逻辑（保留逐个中断/占位语义）。
+    const allConcurrencySafe =
+      calls.length > 1 &&
+      calls.every(
+        tc => tools.find(t => t.name === tc.function.name)?.isConcurrencySafe?.() === true,
+      )
+
+    if (allConcurrencySafe && !signal?.aborted) {
+      toolCallsThisTurn += calls.length
+      calls.forEach(tc => printToolUse(tc, depth))
+      const results = await mapBounded(calls, MAX_CONCURRENT_TOOLS, async tc => {
+        const start = Date.now()
+        const r = await runToolCall(tc, tools, config, opts)
+        return { tc, r, durationMs: Date.now() - start }
       })
-      messages.push({ role: 'tool', tool_call_id: toolCall.id, content })
-      injected.push(...newMessages)
+      // 按调用顺序回填 tool 消息（id 配对，顺序仅为可读性）
+      for (const { tc, r, durationMs } of results) {
+        tracer.recordToolCall({
+          id: tc.id,
+          name: tc.function.name,
+          argumentsRaw: tc.function.arguments,
+          durationMs,
+          resultContent: r.content,
+          isError: r.isError,
+        })
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: r.content })
+        injected.push(...r.newMessages)
+      }
       if (signal?.aborted) interrupted = true
+    } else {
+      for (const toolCall of calls) {
+        // 已中断：为剩余 tool_call 补占位结果，保证协议完整性
+        // （assistant.tool_calls 的每一项都必须有对应的 tool 消息，否则下轮请求会被拒）
+        if (interrupted || signal?.aborted) {
+          interrupted = true
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: '已被用户中断，未执行。',
+          })
+          continue
+        }
+        printToolUse(toolCall, depth)
+        toolCallsThisTurn++
+        const toolStart = Date.now()
+        const { content, newMessages, isError } = await runToolCall(toolCall, tools, config, opts)
+        tracer.recordToolCall({
+          id: toolCall.id,
+          name: toolCall.function.name,
+          argumentsRaw: toolCall.function.arguments,
+          durationMs: Date.now() - toolStart,
+          resultContent: content,
+          isError,
+        })
+        messages.push({ role: 'tool', tool_call_id: toolCall.id, content })
+        injected.push(...newMessages)
+        if (signal?.aborted) interrupted = true
+      }
     }
     messages.push(...injected)
     if (interrupted) return 'interrupted'

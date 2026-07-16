@@ -1,9 +1,20 @@
+import { getAgentDefinitions } from '../../agents/registry.js'
+
 export const AGENT_TOOL_NAME = 'Agent'
 
 export const DESCRIPTION =
   'Delegate a self-contained task to a subagent that runs in its own fresh context and returns a single summary.'
 
+const TYPE_LIST = getAgentDefinitions()
+  .map(d => `- \`${d.agentType}\`: ${d.whenToUse}`)
+  .join('\n')
+
 export const PROMPT = `Launch a subagent to handle a self-contained task autonomously.
+
+## subagent_type
+Pick the agent best suited to the task (defaults to \`general-purpose\` if omitted):
+${TYPE_LIST}
+
 
 ## How it works
 - The subagent starts with a FRESH, empty context — it cannot see this conversation. It only receives the \`prompt\` you give it.

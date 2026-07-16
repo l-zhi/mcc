@@ -5,7 +5,11 @@
 ## [Unreleased]
 
 ### Added
-- **Agent 工具（多 Agent Phase 1）**：派发子代理，用全新上下文 + 受限工具集递归跑 `query()`，只回传最后一条 assistant 文本（上下文隔离）。护栏：子代理工具集排除 Agent（防递归）与 TodoWrite（避免覆盖共享待办）
+- **多 Agent 协作 Phase 1–4**：
+  - Phase 1 — Agent 工具：派发子代理，用全新上下文 + 受限工具集递归跑 `query()`，只回传最后一条 assistant 文本（上下文隔离）。护栏：排除 Agent（防递归）+ TodoWrite（不覆盖共享待办）
+  - Phase 2 — 类型注册表（`src/agents/registry.ts`）：`general-purpose` / `explore`（只读），`subagent_type` 选择 + `whenToUse` 喂给父模型路由；按类型过滤工具子集
+  - Phase 3 — 并行子代理：一条消息里多个 Agent 调用限流并发（`isConcurrencySafe` + `mapBounded`，上限 5）
+  - Phase 4 — 观测性：子代理活动按递归深度缩进嵌套显示在终端（含并行）。（trace-viewer 的嵌套 sidechain 待后续：子代理暂用静默 tracer）
 - `-d` / `--dir <path>` 启动参数：在指定代码库里启动（不传则用当前目录）。启动时 `process.chdir` 到目标目录，系统提示词/记忆/工具/trace 全部随之生效
 
 ### Changed

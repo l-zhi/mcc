@@ -34,6 +34,8 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   prompt: string
   inputSchema: S
   isReadOnly(): boolean
+  /** 是否可与同批其它工具并发执行（默认否）。一条消息里的多个调用全部为 true 时才并发。 */
+  isConcurrencySafe?(): boolean
   call(input: z.infer<S>, ctx?: ToolContext): Promise<ToolResult>
 }
 

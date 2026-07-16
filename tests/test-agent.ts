@@ -8,6 +8,7 @@ import type { Config } from '../src/config.js'
 import { getSystemPrompt } from '../src/prompts.js'
 import { query } from '../src/query.js'
 import { Tracer } from '../src/trace/Tracer.js'
+import { DEFAULT_AGENT_TYPE, getAgentDefinition } from '../src/agents/registry.js'
 
 let pass = 0
 let fail = 0
@@ -50,7 +51,7 @@ async function main() {
             id: 'call_agent_1', type: 'function',
             function: {
               name: 'Agent',
-              arguments: JSON.stringify({ description: '调研主循环', prompt: '读 src/query.ts 并用一句话总结主循环' }),
+              arguments: JSON.stringify({ description: '调研主循环', prompt: '读 src/query.ts 并用一句话总结主循环', subagent_type: 'explore' }),
             },
           }],
         }
@@ -84,12 +85,21 @@ async function main() {
   const subCalls = captured.filter(b => !(b.tools ?? []).some(t => t.function.name === 'Agent'))
   check('恰好一次子代理调用', subCalls.length === 1, `实际 ${subCalls.length}`)
 
-  console.log('\n[递归护栏：子代理工具集]')
+  console.log('\n[Phase 2：类型注册表]')
+  check('DEFAULT_AGENT_TYPE = general-purpose', DEFAULT_AGENT_TYPE === 'general-purpose')
+  check('explore 类型存在', !!getAgentDefinition('explore'))
+  check('未知类型返回 undefined', getAgentDefinition('nope') === undefined)
+
+  console.log('\n[递归护栏 + explore 类型工具集]')
   const sub = subCalls[0]!
   const subToolNames = (sub.tools ?? []).map(t => t.function.name)
   check('子代理工具集不含 Agent（防递归）', !subToolNames.includes('Agent'))
   check('子代理工具集不含 TodoWrite（不覆盖共享待办）', !subToolNames.includes('TodoWrite'))
-  check('子代理仍有 Read/Grep 等基础工具', subToolNames.includes('Read') && subToolNames.includes('Grep'))
+  check('explore 含只读工具 Read/Grep/Glob/LSP',
+    ['Read', 'Grep', 'Glob', 'LSP'].every(n => subToolNames.includes(n)))
+  check('explore 不含 Write/Edit/Bash/NotebookEdit',
+    !['Write', 'Edit', 'Bash', 'NotebookEdit'].some(n => subToolNames.includes(n)),
+    subToolNames.join(','))
 
   console.log('\n[子代理系统提示词]')
   const subSystem = sub.messages[0]
