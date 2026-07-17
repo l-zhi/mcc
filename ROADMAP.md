@@ -24,12 +24,12 @@ mcc 是一个**边学边写**的项目：每个迭代实现一个完整 coding a
 | 权限 allowlist | 一次性 y/N → 记住规则（`Bash(prefix:*)` / 工具级），持久化 settings.json |
 | 链路 trace | NDJSON + 自包含 HTML viewer |
 | 从零构建分文件 | 系统提示词引导多文件、逐文件 Write（对照 opencode 的 A/B 验证） |
-| 多 Agent Phase 1–4 | Agent 工具（上下文隔离）+ 类型注册表（general-purpose/explore）+ 并行子代理 + 终端嵌套观测 |
+| 多 Agent Phase 1–5 | Agent 工具（隔离）+ 类型注册表 + 并行 + 终端嵌套观测 + 异步后台代理（run_in_background / task-notification / TaskStop） |
 
 ## 待办（建议顺序）
 
 1. **流式输出（SSE）** — `api.ts` 改流式，收益最大、改动集中
-2. **多 Agent 收尾** — trace-viewer 子代理 sidechain 嵌套；（选做）异步后台代理 + `<task-notification>` 回推、SendMessage
+2. **多 Agent 收尾（选做）** — trace-viewer 子代理 sidechain 嵌套；SendMessage 进程内互通
 3. **历史持久化 / 续聊** — 对话落盘，可恢复 session
 4. **Ink 终端 UI** — 替换 readline 朴素 REPL
 5. **MCP / WebFetch / WebSearch** — 外部能力接入

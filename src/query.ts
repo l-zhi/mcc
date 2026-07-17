@@ -18,6 +18,8 @@ import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
+import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
+import { takePendingNotifications } from './agents/taskRegistry.js'
 import { TodoWriteTool, renderPlain } from './tools/TodoWriteTool/TodoWriteTool.js'
 import { TODO_WRITE_TOOL_NAME } from './tools/TodoWriteTool/prompt.js'
 import {
@@ -82,6 +84,27 @@ export function maybeInjectTodoReminder(
   return true
 }
 
+/**
+ * Phase 5：把已结束的后台子代理结果作为 <task-notification> 注入父代理的对话流。
+ * 仅顶层（depth 0）注入——只有主代理会派后台任务，子代理不该收这些通知。
+ * 复用「调模型前注入消息」这一钩子（与 TodoWrite 提醒同一处）。返回注入条数。
+ */
+export function maybeInjectTaskNotifications(messages: ChatMessage[], depth: number): number {
+  if (depth !== 0) return 0
+  const done = takePendingNotifications()
+  for (const t of done) {
+    const body =
+      t.status === 'done'
+        ? (t.result ?? '(no result)')
+        : `任务${t.status === 'stopped' ? '已被停止' : '出错'}。${t.result ?? ''}`
+    messages.push({
+      role: 'user',
+      content: `<task-notification>\nBackground subagent [${t.description}] (agentId=${t.id}) finished with status "${t.status}". Result:\n\n${body}\n</task-notification>`,
+    })
+  }
+  return done.length
+}
+
 /** 确认对话的一次请求：工具名 + 输入摘要 + 可选的「总是允许」规则 */
 export type ConfirmRequest = {
   toolName: string
@@ -132,6 +155,7 @@ export const allTools: Tool[] = [
   BashTool,
   TodoWriteTool,
   AgentTool,
+  TaskStopTool,
 ]
 
 const DIM = '\x1b[2m'
@@ -300,6 +324,11 @@ export async function query(
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     if (signal?.aborted) return 'interrupted'
+
+    // Phase 5：调模型前，若有后台子代理已结束，把结果以 <task-notification> 注入（仅顶层）
+    if (maybeInjectTaskNotifications(messages, depth) > 0) {
+      logContext({ event: 'task_notification', messageCount: messages.length })
+    }
 
     // ⑤ 距上次 TodoWrite 太久且本轮在动手 → 注入 system-reminder 拉回逐步节奏
     if (maybeInjectTodoReminder(messages, toolCallsThisTurn)) {

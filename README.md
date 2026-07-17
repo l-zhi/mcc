@@ -7,7 +7,7 @@
 
 > ⚠️ 学习性质的项目，实现思路参考了业界成熟的 coding agent 的公开行为。
 
-当前能力：OpenAI 兼容协议对话（非流式）+ 十个工具——
+当前能力：OpenAI 兼容协议对话（非流式）+ 十一个工具——
 Read（文本 / 图片 / PDF / notebook）、
 Write（先读后写校验 + 过期检测，原理见 [docs/write-tool-internals.md](./docs/write-tool-internals.md)）、
 Edit（精确字符串替换，先读后写）、
@@ -17,7 +17,8 @@ NotebookEdit（.ipynb cell 的 replace / insert / delete，复用先读后写地
 Bash（危险命令拦截）、
 TodoWrite（待办清单 + 逐步执行强化）、
 LSP（真实语言服务器：spawn + JSON-RPC，定义/引用/悬停/符号/调用层级 9 种操作）、
-Agent（子代理：派发独立子任务，隔离上下文，只回传一段总结）。
+Agent（子代理：类型化 general-purpose/explore、可并行、可后台，隔离上下文回传总结）、
+TaskStop（停止后台子代理）。
 
 ## 架构一览
 
@@ -29,7 +30,7 @@ Agent（子代理：派发独立子任务，隔离上下文，只回传一段总
                 │  ① 发请求 ──► api.ts ──► OpenAI 兼容端点
                 │  ② 模型返回 tool_calls
                 │  ③ 执行工具 ──► Tool.ts ──► tools/*
-                │       Read Write Edit Grep Glob NotebookEdit Bash TodoWrite LSP Agent
+                │       Read Write Edit Grep Glob NotebookEdit Bash TodoWrite LSP Agent TaskStop
                 │  ④ 结果以 role:"tool" 回填 ──► 回到 ①，直到返回纯文本
                 ▼
        上下文压缩 · 双记忆 · 权限门 · 链路 trace（横切能力）

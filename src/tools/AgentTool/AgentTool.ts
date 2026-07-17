@@ -15,7 +15,9 @@ import {
   getAgentDefinition,
   getAgentDefinitions,
 } from '../../agents/registry.js'
+import { completeTask, newTaskId, registerTask } from '../../agents/taskRegistry.js'
 import { TODO_WRITE_TOOL_NAME } from '../TodoWriteTool/prompt.js'
+import { TASK_STOP_TOOL_NAME } from '../TaskStopTool/prompt.js'
 import { AGENT_TOOL_NAME, DESCRIPTION, PROMPT } from './prompt.js'
 
 const DIM = '\x1b[2m'
@@ -32,6 +34,12 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe('Which agent type to use (see the list above); defaults to general-purpose'),
+  run_in_background: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, run the subagent in the background: returns an agentId immediately (does NOT wait), and its result is delivered later as a task-notification. Background subagents are read-only. Stop one with TaskStop.',
+    ),
 })
 
 /** 从子代理跑完的消息里取「最后一条有文本的 assistant 消息」作为回传内容 */
@@ -58,7 +66,10 @@ export const AgentTool = buildTool({
   isConcurrencySafe() {
     return true
   },
-  async call({ description, prompt, subagent_type }, ctx?: ToolContext): Promise<ToolResult> {
+  async call(
+    { description, prompt, subagent_type, run_in_background },
+    ctx?: ToolContext,
+  ): Promise<ToolResult> {
     const config = ctx?.config
     if (!config) {
       return { content: 'Error: Agent tool requires config in context (internal wiring issue).' }
@@ -76,15 +87,20 @@ export const AgentTool = buildTool({
       return { content: `Error: unknown subagent_type "${type}". Valid types: ${valid}.` }
     }
 
-    // 子代理工具集：先按类型的 allowlist 过滤（未指定则全部），再统一排除 Agent（防递归）
-    // 与 TodoWrite（待办 store 是进程内单例，避免子代理覆盖用户可见的待办清单）。
+    // 子代理工具集：先按类型的 allowlist 过滤（未指定则全部），再统一排除 Agent（防递归）、
+    // TodoWrite（待办 store 是进程内单例）、TaskStop（子代理不该管后台任务）。
     const allowed = def.tools
-    const childTools = allTools.filter(
+    let childTools = allTools.filter(
       t =>
         t.name !== AGENT_TOOL_NAME &&
         t.name !== TODO_WRITE_TOOL_NAME &&
+        t.name !== TASK_STOP_TOOL_NAME &&
         (allowed === undefined || allowed.includes(t.name)),
     )
+    // 后台子代理没法弹确认框（父可能正在做别的/空闲）→ 只给只读工具，免确认、免 REPL 冲突。
+    if (run_in_background) {
+      childTools = childTools.filter(t => t.isReadOnly())
+    }
 
     const childMessages: ChatMessage[] = [
       {
@@ -93,13 +109,37 @@ export const AgentTool = buildTool({
       },
       { role: 'user', content: prompt },
     ]
-    // 子代理用静默 tracer（本轮不落 trace；可视化留待后续阶段）
-    const childTracer = new Tracer(config, { disabled: true })
-
     const childDepth = (ctx?.depth ?? 0) + 1
     const pad = '  '.repeat(childDepth)
+
+    // Phase 5：后台异步。不 await——立即返回 agentId，结果稍后由主循环以 <task-notification> 回推。
+    if (run_in_background) {
+      const id = newTaskId()
+      const ac = new AbortController() // 独立信号：不随父轮次结束而中止
+      registerTask(id, description, ac)
+      console.log(`${DIM}${pad}⇢ 后台子代理启动 [${def.agentType}] (${id})：${description}${RESET}`)
+      void query(childMessages, config, new Tracer(config, { disabled: true }), {
+        tools: childTools,
+        depth: childDepth,
+        signal: ac.signal,
+      })
+        .then(status => {
+          completeTask(
+            id,
+            lastAssistantText(childMessages),
+            status === 'ok' ? 'done' : status === 'interrupted' ? 'stopped' : 'error',
+          )
+          console.log(`${DIM}${pad}⇠ 后台子代理完成 (${id}，${status})：${description}${RESET}`)
+        })
+        .catch(e => completeTask(id, `Error: ${(e as Error).message}`, 'error'))
+      return {
+        content: `已在后台启动子代理，agentId=${id}。它会独立跑完，结果稍后以 task-notification 回传给你；请继续其它工作，不要等待其结果。需要时可用 TaskStop 停止它。`,
+      }
+    }
+
+    // 同步：父 await 子代理跑完，拿最后一段总结回填。
     console.log(`${DIM}${pad}⤷ 子代理启动 [${def.agentType}]：${description}${RESET}`)
-    const status = await query(childMessages, config, childTracer, {
+    const status = await query(childMessages, config, new Tracer(config, { disabled: true }), {
       tools: childTools,
       depth: childDepth,
       signal: ctx?.signal,

@@ -31,7 +31,7 @@ function ensureDir(): void {
 }
 
 export type ContextLogEntry = {
-  event: 'llm_call' | 'microcompact' | 'compact' | 'snapshot' | 'todo_reminder'
+  event: 'llm_call' | 'microcompact' | 'compact' | 'snapshot' | 'todo_reminder' | 'task_notification'
   /** 当前消息条数 */
   messageCount?: number
   /** 字符估算 token（decideCompaction 用的口径） */
@@ -64,6 +64,8 @@ function formatHuman(e: ContextLogEntry): string {
       return `compact ${e.tokensBefore}→${e.tokensAfter} tokens`
     case 'todo_reminder':
       return `todo_reminder 注入（msgs=${e.messageCount}）`
+    case 'task_notification':
+      return `task_notification 注入（msgs=${e.messageCount}）`
   }
 }
 
