@@ -19,7 +19,9 @@ import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
+import { SendMessageTool } from './tools/SendMessageTool/SendMessageTool.js'
 import { takePendingNotifications } from './agents/taskRegistry.js'
+import { drainInbox } from './agents/mailbox.js'
 import { TodoWriteTool, renderPlain } from './tools/TodoWriteTool/TodoWriteTool.js'
 import { TODO_WRITE_TOOL_NAME } from './tools/TodoWriteTool/prompt.js'
 import {
@@ -105,6 +107,19 @@ export function maybeInjectTaskNotifications(messages: ChatMessage[], depth: num
   return done.length
 }
 
+/**
+ * Phase 6：drain 本 agent 的信箱，把收到的消息作为 <agent-message> 注入。
+ * 不分深度——任何有 agentId 的 agent 在自己循环开头都收自己的信箱（主用途：父给运行中的后台子代理发指令）。
+ */
+function maybeInjectInbox(messages: ChatMessage[], agentId: string | undefined): number {
+  if (!agentId) return 0
+  const inbox = drainInbox(agentId)
+  for (const m of inbox) {
+    messages.push({ role: 'user', content: `<agent-message>\n${m}\n</agent-message>` })
+  }
+  return inbox.length
+}
+
 /** 确认对话的一次请求：工具名 + 输入摘要 + 可选的「总是允许」规则 */
 export type ConfirmRequest = {
   toolName: string
@@ -131,6 +146,8 @@ export type QueryOptions = {
   tools?: Tool[]
   /** 递归深度：主循环 0，子代理 1。用于并发/递归护栏。 */
   depth?: number
+  /** 本 agent 的 id（用于收取自己信箱的消息）。主代理='main'，后台子代理=其 agentId。 */
+  agentId?: string
 }
 
 /** 为确认对话生成一行简短的输入摘要 */
@@ -156,6 +173,7 @@ export const allTools: Tool[] = [
   TodoWriteTool,
   AgentTool,
   TaskStopTool,
+  SendMessageTool,
 ]
 
 const DIM = '\x1b[2m'
@@ -329,6 +347,8 @@ export async function query(
     if (maybeInjectTaskNotifications(messages, depth) > 0) {
       logContext({ event: 'task_notification', messageCount: messages.length })
     }
+    // Phase 6：drain 本 agent 信箱，把收到的 <agent-message> 注入（父给运行中的子代理发的指令）
+    maybeInjectInbox(messages, opts.agentId)
 
     // ⑤ 距上次 TodoWrite 太久且本轮在动手 → 注入 system-reminder 拉回逐步节奏
     if (maybeInjectTodoReminder(messages, toolCallsThisTurn)) {

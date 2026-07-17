@@ -16,6 +16,7 @@ import { compactMessages } from './compact.js'
 import { estimateContextTokens, percentContextLeft } from './context.js'
 import { CONTEXT_LOG_PATH, logContext } from './contextLog.js'
 import { appendProjectMemory } from './memory.js'
+import { MAIN_AGENT_ID } from './agents/mailbox.js'
 import { getRules, loadRulesFromDisk, SETTINGS_PATH } from './permissions.js'
 import { getSystemPrompt } from './prompts.js'
 import { getToolsOverheadTokens, query, type ConfirmFn } from './query.js'
@@ -223,6 +224,7 @@ export async function startRepl(config: Config): Promise<void> {
       const status = await query(messages, config, tracer, {
         signal: ac.signal,
         confirm,
+        agentId: MAIN_AGENT_ID,
       })
       tracer.endTurn(status)
       if (status === 'interrupted') {

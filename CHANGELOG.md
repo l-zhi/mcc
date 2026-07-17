@@ -11,6 +11,7 @@
   - Phase 3 — 并行子代理：一条消息里多个 Agent 调用限流并发（`isConcurrencySafe` + `mapBounded`，上限 5）
   - Phase 4 — 观测性：子代理活动按递归深度缩进嵌套显示在终端（含并行）。（trace-viewer 的嵌套 sidechain 待后续：子代理暂用静默 tracer）
   - Phase 5 — 异步后台代理：`Agent` 加 `run_in_background`（立即返回 agentId、不阻塞，后台只读跑），完成后以 `<task-notification>` 复用注入点回推给顶层代理；新增 `TaskStop` 工具按 id 中止；后台任务注册表 `src/agents/taskRegistry.ts`
+  - Phase 6 — 代理间通信（进程内）：`SendMessage(to_agent_id, message)` 工具 + 每 agent 内存信箱 `src/agents/mailbox.js`；agent 在自己循环每个工具回合开头 drain 信箱、把消息作 `<agent-message>` 注入。主用途：父给运行中的后台子代理中途操舵。`query()` 加 `agentId`
 - `-d` / `--dir <path>` 启动参数：在指定代码库里启动（不传则用当前目录）。启动时 `process.chdir` 到目标目录，系统提示词/记忆/工具/trace 全部随之生效
 
 ### Changed

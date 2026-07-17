@@ -18,6 +18,7 @@ import {
 import { completeTask, newTaskId, registerTask } from '../../agents/taskRegistry.js'
 import { TODO_WRITE_TOOL_NAME } from '../TodoWriteTool/prompt.js'
 import { TASK_STOP_TOOL_NAME } from '../TaskStopTool/prompt.js'
+import { SEND_MESSAGE_TOOL_NAME } from '../SendMessageTool/prompt.js'
 import { AGENT_TOOL_NAME, DESCRIPTION, PROMPT } from './prompt.js'
 
 const DIM = '\x1b[2m'
@@ -87,15 +88,17 @@ export const AgentTool = buildTool({
       return { content: `Error: unknown subagent_type "${type}". Valid types: ${valid}.` }
     }
 
-    // 子代理工具集：先按类型的 allowlist 过滤（未指定则全部），再统一排除 Agent（防递归）、
-    // TodoWrite（待办 store 是进程内单例）、TaskStop（子代理不该管后台任务）。
+    // 子代理工具集：先按类型的 allowlist 过滤（未指定则全部），再统一排除编排类工具——
+    // Agent（防递归）、TodoWrite（待办 store 单例）、TaskStop / SendMessage（后台任务与代理间通信由顶层编排）。
     const allowed = def.tools
+    const orchestrationTools = new Set([
+      AGENT_TOOL_NAME,
+      TODO_WRITE_TOOL_NAME,
+      TASK_STOP_TOOL_NAME,
+      SEND_MESSAGE_TOOL_NAME,
+    ])
     let childTools = allTools.filter(
-      t =>
-        t.name !== AGENT_TOOL_NAME &&
-        t.name !== TODO_WRITE_TOOL_NAME &&
-        t.name !== TASK_STOP_TOOL_NAME &&
-        (allowed === undefined || allowed.includes(t.name)),
+      t => !orchestrationTools.has(t.name) && (allowed === undefined || allowed.includes(t.name)),
     )
     // 后台子代理没法弹确认框（父可能正在做别的/空闲）→ 只给只读工具，免确认、免 REPL 冲突。
     if (run_in_background) {
@@ -122,6 +125,7 @@ export const AgentTool = buildTool({
         tools: childTools,
         depth: childDepth,
         signal: ac.signal,
+        agentId: id, // 后台子代理收自己信箱（父可用 SendMessage 中途发指令）
       })
         .then(status => {
           completeTask(

@@ -10,12 +10,13 @@ public behavior of mature coding agents. See design notes in
 > mature coding agents.
 
 Current capabilities: a chat loop over the OpenAI-compatible protocol (non-streaming)
-plus eleven tools — Read (text / image / PDF / notebook), Write, Edit, Grep, Glob,
+plus twelve tools — Read (text / image / PDF / notebook), Write, Edit, Grep, Glob,
 NotebookEdit, Bash (with dangerous-command blocking), TodoWrite (with step-by-step
 reinforcement), LSP (real language servers over JSON-RPC: definition / references /
 hover / symbols / call hierarchy, 9 operations), Agent (subagents: typed
 general-purpose/explore, parallel or background, isolated context → single summary),
-and TaskStop (cancel a background subagent).
+TaskStop (cancel a background subagent), and SendMessage (steer a running background
+subagent mid-run).
 
 ## Architecture at a glance
 
@@ -27,7 +28,7 @@ user input
                 │  1. send request ──► api.ts ──► OpenAI-compatible endpoint
                 │  2. model returns tool_calls
                 │  3. run tools ──► Tool.ts ──► tools/*
-                │       Read Write Edit Grep Glob NotebookEdit Bash TodoWrite LSP Agent TaskStop
+                │       Read Write Edit Grep Glob NotebookEdit Bash TodoWrite LSP Agent TaskStop SendMessage
                 │  4. feed results back as role:"tool" ──► loop until plain text
                 ▼
      context compaction · dual memory · permission gate · trace (cross-cutting)
